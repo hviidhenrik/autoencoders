@@ -1,40 +1,13 @@
 from keras.layers import Input, Dense
-from keras.models import Model, load_model
+from keras.models import Model
 from keras.datasets import mnist
 from typing import Any
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
+from model_base import AutoencoderBaseModel
 
-class PlotsMixin:
-    def plot_learning(self, history):
-        plt.plot(history.history['loss'], label="train")
-        plt.plot(history.history['val_loss'], label="validation")
-        plt.title("Learning curve")
-        plt.ylabel("Loss")
-        plt.xlabel("Epoch")
-        plt.legend(loc="upper right")
-        plt.show()
 
-    def plot_mnist_preds(self, x_input, x_predictions, N_digits=10):
-        plt.figure(figsize=(20, 4))
-        for i in range(N_digits):
-            # display original
-            ax = plt.subplot(2, N_digits, i + 1)
-            plt.imshow(x_input[i].reshape(28, 28))
-            plt.gray()
-            ax.get_xaxis().set_visible(False)
-            ax.get_yaxis().set_visible(False)
-
-            # display reconstruction
-            ax = plt.subplot(2, N_digits, i + 1 + N_digits)
-            plt.imshow(x_predictions[i].reshape(28, 28))
-            plt.gray()
-            ax.get_xaxis().set_visible(False)
-            ax.get_yaxis().set_visible(False)
-        plt.show()
-
-class ModelMixin:
+class FFNModelMixin:
     @staticmethod
     def ffn_autoencoder(x_train,
                         x_train_target,
@@ -64,21 +37,13 @@ class ModelMixin:
                                   verbose=1)
         return autoencoder, history
 
-class GeneralMixin:
-    def sample_unique_ints(self, N_ints: int = 10, min: int = 0, max: int = 100):
-        integers = []
-        while len(integers) < N_ints:
-            i = np.random.randint(min, max)
-            if i not in integers: integers.append(i)
-        return integers
 
-
-class FFNAutoencoder(PlotsMixin, ModelMixin, GeneralMixin):
+class FFNAutoencoder(AutoencoderBaseModel, FFNModelMixin):
     def __init__(self):
-        pass
+        super().__init__(model_type="FFN")
 
-    def load_and_prepare_mnist(self,
-                               train_size: int = 60000,
+    @staticmethod
+    def load_and_prepare_mnist(train_size: int = 60000,
                                test_size: int = 10000) -> Any:
         (x_train, _), (x_test, _) = mnist.load_data()
         x_train = x_train[0:train_size]
@@ -103,7 +68,8 @@ class FFNAutoencoder(PlotsMixin, ModelMixin, GeneralMixin):
             x_test_noisy = scaler.transform(x_test_noisy)
         return x_train_noisy, x_test_noisy
 
-    def fit(self, x_train,
+    def fit(self,
+            x_train,
             x_train_target: Any,
             x_test: Any,
             x_test_target: Any,
@@ -115,16 +81,7 @@ class FFNAutoencoder(PlotsMixin, ModelMixin, GeneralMixin):
                                                      batch_size=batch_size,
                                                      optimizer=optimizer)
         self.model = fitted_model
-        return fitted_model, history
-
-    def save(self):
-        filename = "FFN_autoencoder.h5"
-        self.model.save(filename)
-        print("Saved model to disk as " + filename)
-
-    def load(self):
-        self.model = load_model("ffn_autoencoder.h5")
-        print("Model loaded and ready")
+        self.train_history = history
 
     def predict(self, x_input):
         return self.model.predict(x_input)
@@ -136,23 +93,23 @@ if __name__ == "__main__":
     noise_sd = 0.5
     if train:
         model = FFNAutoencoder()
-        x_train, x_test = model.load_and_prepare_mnist()
+        x_train, x_test = model.load_and_prepare_mnist(train_size=5000, test_size=500)
         x_train_noisy, x_test_noisy = model.inject_noise_mnist(x_train,
                                                                x_test,
                                                                noise_sd=noise_sd,
                                                                scale=True)
-        autoencoder, history = model.fit(x_train_noisy, x_train, x_test_noisy, x_test,
-                                               epochs=250,
-                                               batch_size=256,
-                                               optimizer="adam")
-        model.save()
+        model.fit(x_train_noisy, x_train, x_test_noisy, x_test,
+                  epochs=3,
+                  batch_size=256,
+                  optimizer="adam")
+        model.save("FFN_autoencoder.h5")
         preds = model.predict(x_test_noisy)
         model.plot_mnist_preds(x_test_noisy, preds)
-        model.plot_learning(history)
+        model.plot_learning()
     else:
         model = FFNAutoencoder()
-        model.load()
+        model.load("FFN_autoencoder.h5")
         x_train, x_test = model.load_and_prepare_mnist()
         x_train_noisy, x_test_noisy = model.inject_noise_mnist(x_train, x_test, noise_sd=noise_sd)
-        random_rows = model.sample_unique_ints(10,0,len(x_test))
+        random_rows = model.sample_unique_ints(10, 0, len(x_test))
         model.plot_mnist_preds(x_test_noisy[random_rows], model.predict(x_test_noisy[random_rows]))
