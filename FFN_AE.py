@@ -1,10 +1,10 @@
+from model_base import AutoencoderBaseModel
 from keras.layers import Input, Dense
 from keras.models import Model
 from keras.datasets import mnist
 from typing import Any
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-from model_base import AutoencoderBaseModel
 
 
 class FFNModelMixin:
@@ -42,25 +42,20 @@ class FFNAutoencoder(AutoencoderBaseModel, FFNModelMixin):
     def __init__(self):
         super().__init__(model_type="FFN")
 
-    @staticmethod
-    def load_and_prepare_mnist(train_size: int = 60000,
+    def load_and_prepare_mnist(self,
+                               train_size: int = 60000,
                                test_size: int = 10000) -> Any:
-        (x_train, _), (x_test, _) = mnist.load_data()
-        x_train = x_train[0:train_size]
-        x_test = x_test[0:test_size]
-        x_train = x_train.astype('float32') / 255.
-        x_test = x_test.astype('float32') / 255.
+        x_train, x_test = super().load_and_prepare_mnist(train_size, test_size)
         x_train = x_train.reshape((len(x_train), np.prod(x_train.shape[1:])))
         x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
         return x_train, x_test
 
-    @staticmethod
-    def inject_noise_mnist(x_train: Any,
+    def inject_noise_mnist(self,
+                           x_train: Any,
                            x_test: Any,
                            noise_sd: float = 0.5,
                            scale: bool = True) -> Any:
-        x_train_noisy = x_train + np.random.normal(0, noise_sd, size=x_train.shape)
-        x_test_noisy = x_test + np.random.normal(0, noise_sd, size=x_test.shape)
+        x_train_noisy, x_test_noisy = super().inject_noise_mnist(x_train, x_test, noise_sd, scale)
         if scale:
             scaler = MinMaxScaler()
             scaler.fit(x_train_noisy)
@@ -99,7 +94,7 @@ if __name__ == "__main__":
                                                                noise_sd=noise_sd,
                                                                scale=True)
         model.fit(x_train_noisy, x_train, x_test_noisy, x_test,
-                  epochs=3,
+                  epochs=20,
                   batch_size=256,
                   optimizer="adam")
         model.save("FFN_autoencoder.h5")
