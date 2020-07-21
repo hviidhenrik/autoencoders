@@ -1,3 +1,5 @@
+import silence_tensorflow.auto
+from keras.utils import plot_model
 from model_base import AutoencoderBaseModel
 from keras.layers import Input, Dense
 from keras.models import Model
@@ -24,9 +26,19 @@ class FFNModelMixin:
         decoded = Dense(64, activation='relu')(encoded)
         decoded = Dense(128, activation='relu')(decoded)
         decoded = Dense(256, activation='relu')(decoded)
-        output_layer = Dense(784, activation='sigmoid')(decoded)
+        output_layer_1 = Dense(784, activation='sigmoid', name="output_layer_1")(decoded)
 
-        autoencoder = Model(input_layer, output_layer)
+        # encoded = Dense(256, activation='relu')(output_layer_1)
+        # encoded = Dense(128, activation='relu')(encoded)
+        # encoded = Dense(64, activation='relu')(encoded)
+        # encoded = Dense(32, activation='relu')(encoded)
+        # decoded = Dense(64, activation='relu')(encoded)
+        # decoded = Dense(128, activation='relu')(decoded)
+        # decoded = Dense(256, activation='relu')(decoded)
+        # output_layer_2 = Dense(784, activation='sigmoid', name = "output_layer_2")(decoded)
+
+        autoencoder = Model(inputs=input_layer, outputs=output_layer_1)
+        # plot_model(autoencoder, to_file="FFN_autoencoder_graph.png", show_shapes=True)
         autoencoder.compile(optimizer=optimizer, loss='binary_crossentropy')
         autoencoder.summary()
         history = autoencoder.fit(x_train, x_train_target,
@@ -83,27 +95,38 @@ class FFNAutoencoder(AutoencoderBaseModel, FFNModelMixin):
 
 
 if __name__ == "__main__":
-    train = True
-    # train = False
+    # train = True
+    train = False
     noise_sd = 0.5
     if train:
         model = FFNAutoencoder()
-        x_train, x_test = model.load_and_prepare_mnist(train_size=5000, test_size=500)
+        model_smoother = FFNAutoencoder()
+        x_train, x_test = model.load_and_prepare_mnist()
         x_train_noisy, x_test_noisy = model.inject_noise_mnist(x_train,
                                                                x_test,
                                                                noise_sd=noise_sd,
                                                                scale=True)
         model.fit(x_train_noisy, x_train, x_test_noisy, x_test,
-                  epochs=20,
+                  epochs=10,
                   batch_size=256,
                   optimizer="adam")
-        model.save("FFN_autoencoder.h5")
-        preds = model.predict(x_test_noisy)
-        model.plot_mnist_preds(x_test_noisy, preds)
+        model.save("FFN_autoencoder_denoiser.h5")
+        x_train_denoised = model.predict(x_train_noisy)
+        x_test_denoised = model.predict(x_test_noisy)
+        model_smoother.fit(x_train_denoised, x_train, x_test_denoised, x_test,
+                  epochs=10,
+                  batch_size=256,
+                  optimizer="adam")
+        model.save("FFN_autoencoder_smoother.h5")
+        preds_1 = model.predict(x_test_noisy)
+        preds_2 = model_smoother.predict(x_test_denoised)
+        model.plot_mnist_preds(x_test_noisy, preds_1)
+        model_smoother.plot_mnist_preds(x_test_denoised, preds_2)
         model.plot_learning()
+        model_smoother.plot_learning()
     else:
         model = FFNAutoencoder()
-        model.load("FFN_autoencoder.h5")
+        model.load("FFN_autoencoder_denoiser.h5")
         x_train, x_test = model.load_and_prepare_mnist()
         x_train_noisy, x_test_noisy = model.inject_noise_mnist(x_train, x_test, noise_sd=noise_sd)
         random_rows = model.sample_unique_ints(10, 0, len(x_test))
